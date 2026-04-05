@@ -1,0 +1,38 @@
+
+1. Data Cleaning and Pre-processing 
+a. Join steam.csv, steam_requirements_data.csv, steam_support_info.csv, steamspy_tag_data.csv 
+b. Remove unneeded columns, Converting attributes to binary/categorical 
+c. Filter games with > threshold reviews (pos_ratings + neg_ratings) 
+d. Deal with missing data 
+e. Add the new column for positive reception ratio 'r' and then REMOVE pos_ratings/neg_ratings columns 
+f. Try to look at different ways to discretize 'r' (split into 3 categories). Try quartile stuff, varying percentiles etc. 
+
+2. Clustering 
+a. Figure out a way to decide 'k'
+b. Apply k-medoids algorithm (dissimilarity measure = Gower distance) 
+c. Evaluate metrics 
+   -> Silhouette coefficient 
+   -> Sum of within-cluster pairwise distances (Gower distance)
+   -> ARI 
+d. Observe key patterns or trends 
+
+3. Classification 
+a. Naive Bayes Inference 
+b. Random Forest Regression 
+c. Create ROC curve to determine thresholds for models a and b 
+d. Evaluate metrics
+   -> Confusion Matrix 
+   -> Precision, Recall, F1
+* For training and testing, we use stratified k-fold cross validation. 
+
+Roles
+1: ALVIS 
+2: RAINAH 
+3a,3b: ARYAN 
+3c,3d: AMANDA 
+
+Milestones
+1. Finish Data Cleaning and Pre-processing: Thursday, April 9th (8 pm) ALVIS
+2. Finish Clustering and Classification: Friday, April 17th (11:59 pm) RAINAH, ARYAN, AMANDA 
+3. Finish presentation/report: Sunday, April 19th (11:59 pm) EVERYONE 
+4. Practice/Finalize report/presentation on April 21st/22nd EVERYONE 
