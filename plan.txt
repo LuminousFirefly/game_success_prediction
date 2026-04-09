@@ -3,9 +3,14 @@
 a. Join steam.csv, steam_requirements_data.csv, steam_support_info.csv, steamspy_tag_data.csv 
 b. Remove unneeded columns, Converting attributes to binary/categorical 
 c. Filter games with > threshold reviews (pos_ratings + neg_ratings) 
+	-> Positive perception extremely left skewed (even when removing games with low samples of ratings)
 d. Deal with missing data 
 e. Add the new column for positive reception ratio 'r' and then REMOVE pos_ratings/neg_ratings columns 
 f. Try to look at different ways to discretize 'r' (split into 3 categories). Try quartile stuff, varying percentiles etc. 
+	-> Wilson Lower Bound (https://medium.com/tech-that-works/wilson-lower-bound-score-and-bayesian-approximation-for-k-star-scale-rating-to-rate-products-c67ec6e30060) 
+	-> Used this to convert r to something more robust (penalizing lower review counts)
+	-> Discretizing it mostly based on quartiles! 
+
 
 2. Clustering 
 a. Figure out a way to decide 'k'
@@ -36,3 +41,6 @@ Milestones
 2. Finish Clustering and Classification: Friday, April 17th (11:59 pm) RAINAH, ARYAN, AMANDA 
 3. Finish presentation/report: Sunday, April 19th (11:59 pm) EVERYONE 
 4. Practice/Finalize report/presentation on April 21st/22nd EVERYONE 
+
+
+
