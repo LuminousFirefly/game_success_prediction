@@ -164,9 +164,11 @@ if page == "📊 Dataset Explorer":
     # ── Row 4: Scatter ──
     st.subheader("Owners (log scale) vs Wilson Score")
     scatter_df = pd.DataFrame(eda["scatter_sample"])
+    has_color = "rating_category" in scatter_df.columns
     fig = px.scatter(
         scatter_df, x="owners_log", y="wilson_score",
-        color="rating_category", color_discrete_map=RATING_5_COLOR,
+        color="rating_category" if has_color else None,
+        color_discrete_map=RATING_5_COLOR if has_color else None,
         opacity=0.6,
         labels={"owners_log": "log(Owners)", "wilson_score": "Wilson Score"},
     )

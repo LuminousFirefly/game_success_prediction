@@ -125,12 +125,12 @@ price_data = df["price"].clip(upper=60)
 counts_p, edges_p = np.histogram(price_data, bins=30)
 eda["price_hist"] = {"counts": counts_p.tolist(), "edges": edges_p.tolist()}
 
-# Scatter sample: owners_log vs wilson_score (2 000 points, stratified by rating)
+# Scatter sample: owners_log vs wilson_score — simple random sample avoids
+# pandas 3.0 groupby.apply behaviour change that dropped the key column
 sample = (
     df[["owners_log", "wilson_score", "rating_category"]]
     .dropna()
-    .groupby("rating_category", group_keys=False)
-    .apply(lambda g: g.sample(min(len(g), 400), random_state=42))
+    .sample(n=min(2000, len(df)), random_state=42)
     .reset_index(drop=True)
 )
 eda["scatter_sample"] = sample.to_dict(orient="records")
