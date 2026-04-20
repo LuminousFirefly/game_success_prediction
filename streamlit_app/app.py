@@ -211,18 +211,20 @@ elif page == "📈 Model Evaluation":
         ["3-Class Classification", "5-Class Classification", "Regression"]
     )
 
+    def _clf_row(name, d):
+        has_cv = "cv_acc_mean" in d
+        return {
+            "Model":              name,
+            "CV Acc":             f"{d['cv_acc_mean']*100:.1f}% ± {d['cv_acc_std']*100:.1f}%" if has_cv else "—",
+            "CV F1 (macro)":      f"{d['cv_f1_mean']:.3f} ± {d['cv_f1_std']:.3f}" if has_cv else "—",
+            "Test Acc":           f"{d['test_accuracy']*100:.1f}%",
+            "Test F1 (macro)":    f"{d['test_f1']:.3f}" if "test_f1" in d else "—",
+        }
+
     # ── 3-Class tab ────────────────────────────────────────────────────────────
     with tab_clf3:
         st.subheader("All Models — Summary")
-        rows = []
-        for name, d in ev["clf3"].items():
-            rows.append({
-                "Model":              name,
-                "CV Acc":             f"{d['cv_acc_mean']*100:.1f}% ± {d['cv_acc_std']*100:.1f}%",
-                "CV F1 (weighted)":   f"{d['cv_f1_mean']:.3f} ± {d['cv_f1_std']:.3f}",
-                "Test Acc":           f"{d['test_accuracy']*100:.1f}%",
-                "Test F1 (weighted)": f"{d['test_f1']:.3f}",
-            })
+        rows = [_clf_row(name, d) for name, d in ev["clf3"].items()]
         st.dataframe(pd.DataFrame(rows).set_index("Model"), width="stretch")
 
         st.divider()
@@ -240,15 +242,7 @@ elif page == "📈 Model Evaluation":
     # ── 5-Class tab ────────────────────────────────────────────────────────────
     with tab_clf5:
         st.subheader("All Models — Summary")
-        rows = []
-        for name, d in ev["clf5"].items():
-            rows.append({
-                "Model":              name,
-                "CV Acc":             f"{d['cv_acc_mean']*100:.1f}% ± {d['cv_acc_std']*100:.1f}%",
-                "CV F1 (weighted)":   f"{d['cv_f1_mean']:.3f} ± {d['cv_f1_std']:.3f}",
-                "Test Acc":           f"{d['test_accuracy']*100:.1f}%",
-                "Test F1 (weighted)": f"{d['test_f1']:.3f}",
-            })
+        rows = [_clf_row(name, d) for name, d in ev["clf5"].items()]
         st.dataframe(pd.DataFrame(rows).set_index("Model"), width="stretch")
 
         st.divider()
@@ -268,10 +262,11 @@ elif page == "📈 Model Evaluation":
         st.subheader("All Models — Summary")
         rows = []
         for name, d in ev["reg"].items():
+            has_cv = "cv_r2_mean" in d
             rows.append({
                 "Model":    name,
-                "CV R²":    f"{d['cv_r2_mean']:.4f} ± {d['cv_r2_std']:.4f}",
-                "CV RMSE":  f"{d['cv_rmse_mean']:.4f} ± {d['cv_rmse_std']:.4f}",
+                "CV R²":    f"{d['cv_r2_mean']:.4f} ± {d['cv_r2_std']:.4f}" if has_cv else "—",
+                "CV RMSE":  f"{d['cv_rmse_mean']:.4f} ± {d['cv_rmse_std']:.4f}" if has_cv else "—",
                 "Test R²":  f"{d['r2']:.4f}",
                 "Test RMSE":f"{d['rmse']:.4f}",
             })
