@@ -33,12 +33,12 @@ def load_models():
     return clf, reg, le3, feat_cols, defaults
 
 @st.cache_data
-def load_eda():
+def load_eda(_mtime=None):
     with open(MODELS_DIR / "eda_data.json") as f:
         return json.load(f)
 
 @st.cache_data
-def load_eval():
+def load_eval(_mtime=None):
     with open(MODELS_DIR / "eval_data.json") as f:
         return json.load(f)
 
@@ -113,7 +113,7 @@ if page == "📊 Dataset Explorer":
         st.info("Run `python streamlit_app/train_models.py` to generate model files, then restart.")
         st.stop()
 
-    eda = load_eda()
+    eda = load_eda(_mtime=(MODELS_DIR / "eda_data.json").stat().st_mtime)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total Games",    "26,821")
@@ -205,20 +205,19 @@ elif page == "📈 Model Evaluation":
         st.info("Run `python streamlit_app/train_models.py` first, then restart.")
         st.stop()
 
-    ev = load_eval()
+    ev = load_eval(_mtime=(MODELS_DIR / "eval_data.json").stat().st_mtime)
 
     tab_clf3, tab_clf5, tab_reg = st.tabs(
         ["3-Class Classification", "5-Class Classification", "Regression"]
     )
 
     def _clf_row(name, d):
-        has_cv = "cv_acc_mean" in d
         return {
-            "Model":              name,
-            "CV Acc":             f"{d['cv_acc_mean']*100:.1f}% ± {d['cv_acc_std']*100:.1f}%" if has_cv else "—",
-            "CV F1 (macro)":      f"{d['cv_f1_mean']:.3f} ± {d['cv_f1_std']:.3f}" if has_cv else "—",
-            "Test Acc":           f"{d['test_accuracy']*100:.1f}%",
-            "Test F1 (macro)":    f"{d['test_f1']:.3f}" if "test_f1" in d else "—",
+            "Model":           name,
+            "CV Acc":          f"{d['cv_acc_mean']*100:.1f}% ± {d['cv_acc_std']*100:.1f}%",
+            "CV F1 (macro)":   f"{d['cv_f1_mean']:.3f} ± {d['cv_f1_std']:.3f}",
+            "Test Acc":        f"{d['test_accuracy']*100:.1f}%",
+            "Test F1 (macro)": f"{d['test_f1']:.3f}",
         }
 
     # ── 3-Class tab ────────────────────────────────────────────────────────────
@@ -262,11 +261,10 @@ elif page == "📈 Model Evaluation":
         st.subheader("All Models — Summary")
         rows = []
         for name, d in ev["reg"].items():
-            has_cv = "cv_r2_mean" in d
             rows.append({
                 "Model":    name,
-                "CV R²":    f"{d['cv_r2_mean']:.4f} ± {d['cv_r2_std']:.4f}" if has_cv else "—",
-                "CV RMSE":  f"{d['cv_rmse_mean']:.4f} ± {d['cv_rmse_std']:.4f}" if has_cv else "—",
+                "CV R²":    f"{d['cv_r2_mean']:.4f} ± {d['cv_r2_std']:.4f}",
+                "CV RMSE":  f"{d['cv_rmse_mean']:.4f} ± {d['cv_rmse_std']:.4f}",
                 "Test R²":  f"{d['r2']:.4f}",
                 "Test RMSE":f"{d['rmse']:.4f}",
             })
