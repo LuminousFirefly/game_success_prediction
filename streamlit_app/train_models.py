@@ -14,8 +14,11 @@ import pandas as pd
 from lightgbm import LGBMClassifier
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.metrics import auc, confusion_matrix, r2_score, roc_curve, mean_squared_error
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    auc, confusion_matrix, f1_score, make_scorer,
+    r2_score, roc_curve, mean_squared_error,
+)
+from sklearn.model_selection import cross_validate, KFold, StratifiedKFold, train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import LabelEncoder, label_binarize
 from xgboost import XGBClassifier, XGBRegressor
@@ -125,6 +128,10 @@ reg_defs = {
                      subsample=0.8, colsample_bytree=0.8, random_state=42, verbosity=0)),
 }
 
+def _neg_rmse(y_true, y_pred):
+    return -np.sqrt(mean_squared_error(y_true, y_pred))
+
+
 def compute_roc(pipeline, X_test, y_test, classes):
     y_bin   = label_binarize(y_test, classes=range(len(classes)))
     y_score = pipeline.predict_proba(X_test)
@@ -136,12 +143,23 @@ def compute_roc(pipeline, X_test, y_test, classes):
 
 eval_data = {"clf5": {}, "clf3": {}, "reg": {}}
 
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+kf  = KFold(n_splits=5, shuffle=True, random_state=42)
+
 for name, pipe in clf5_defs.items():
     print(f"  clf5 — {name}")
+    cv_res = cross_validate(pipe, X_tr, y5_tr, cv=skf,
+                            scoring=["accuracy", "f1_macro"],
+                            return_train_score=False)
     pipe.fit(X_tr, y5_tr)
     preds = pipe.predict(X_te)
     eval_data["clf5"][name] = {
         "test_accuracy": round(float((preds == y5_te).mean()), 4),
+        "test_f1":       round(float(f1_score(y5_te, preds, average="macro")), 4),
+        "cv_acc_mean":   round(float(cv_res["test_accuracy"].mean()), 4),
+        "cv_acc_std":    round(float(cv_res["test_accuracy"].std()), 4),
+        "cv_f1_mean":    round(float(cv_res["test_f1_macro"].mean()), 4),
+        "cv_f1_std":     round(float(cv_res["test_f1_macro"].std()), 4),
         "classes":       le5.classes_.tolist(),
         "confusion_matrix": confusion_matrix(y5_te, preds).tolist(),
         "roc": compute_roc(pipe, X_te, y5_te, le5.classes_.tolist()),
@@ -149,10 +167,18 @@ for name, pipe in clf5_defs.items():
 
 for name, pipe in clf3_defs.items():
     print(f"  clf3 — {name}")
+    cv_res = cross_validate(pipe, X_tr, y3_tr, cv=skf,
+                            scoring=["accuracy", "f1_macro"],
+                            return_train_score=False)
     pipe.fit(X_tr, y3_tr)
     preds = pipe.predict(X_te)
     eval_data["clf3"][name] = {
         "test_accuracy": round(float((preds == y3_te).mean()), 4),
+        "test_f1":       round(float(f1_score(y3_te, preds, average="macro")), 4),
+        "cv_acc_mean":   round(float(cv_res["test_accuracy"].mean()), 4),
+        "cv_acc_std":    round(float(cv_res["test_accuracy"].std()), 4),
+        "cv_f1_mean":    round(float(cv_res["test_f1_macro"].mean()), 4),
+        "cv_f1_std":     round(float(cv_res["test_f1_macro"].std()), 4),
         "classes":       le3.classes_.tolist(),
         "confusion_matrix": confusion_matrix(y3_te, preds).tolist(),
         "roc": compute_roc(pipe, X_te, y3_te, le3.classes_.tolist()),
@@ -163,14 +189,22 @@ sample_idx = np.random.RandomState(42).choice(len(X_te), size=min(1500, len(X_te
 X_te_s  = X_te.iloc[sample_idx]
 yr_te_s = yr_te[sample_idx]
 
+neg_rmse_scorer = make_scorer(_neg_rmse)
 for name, pipe in reg_defs.items():
     print(f"  reg  — {name}")
+    cv_res = cross_validate(pipe, X_tr, yr_tr, cv=kf,
+                            scoring={"r2": "r2", "neg_rmse": neg_rmse_scorer},
+                            return_train_score=False)
     pipe.fit(X_tr, yr_tr)
     preds_full   = pipe.predict(X_te)
     preds_sample = pipe.predict(X_te_s)
     eval_data["reg"][name] = {
-        "r2":   round(float(r2_score(yr_te, preds_full)), 4),
-        "rmse": round(float(np.sqrt(mean_squared_error(yr_te, preds_full))), 4),
+        "r2":           round(float(r2_score(yr_te, preds_full)), 4),
+        "rmse":         round(float(np.sqrt(mean_squared_error(yr_te, preds_full))), 4),
+        "cv_r2_mean":   round(float(cv_res["test_r2"].mean()), 4),
+        "cv_r2_std":    round(float(cv_res["test_r2"].std()), 4),
+        "cv_rmse_mean": round(float(-cv_res["test_neg_rmse"].mean()), 4),
+        "cv_rmse_std":  round(float(cv_res["test_neg_rmse"].std()), 4),
         "scatter": {
             "actual":    yr_te_s.tolist(),
             "predicted": preds_sample.tolist(),
