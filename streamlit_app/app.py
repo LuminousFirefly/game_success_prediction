@@ -36,6 +36,11 @@ def load_eda():
     with open(MODELS_DIR / "eda_data.json") as f:
         return json.load(f)
 
+@st.cache_data
+def load_eval():
+    with open(MODELS_DIR / "eval_data.json") as f:
+        return json.load(f)
+
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 with st.sidebar:
     st.image("https://store.steampowered.com/favicon.ico", width=32)
@@ -44,7 +49,7 @@ with st.sidebar:
     st.divider()
     page = st.radio(
         "Navigate",
-        ["📊 Dataset Explorer", "🔮 Single Game Predictor", "📂 Batch Predictor"],
+        ["📊 Dataset Explorer", "📈 Model Evaluation", "🔮 Single Game Predictor", "📂 Batch Predictor"],
         label_visibility="collapsed",
     )
     st.divider()
@@ -300,6 +305,137 @@ elif page == "🔮 Single Game Predictor":
                           plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
                           margin=dict(l=0, r=0, t=0, b=0))
         st.plotly_chart(fig, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 2 — Model Evaluation
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "📈 Model Evaluation":
+    st.title("📈 Model Evaluation")
+    st.caption("Confusion matrices, ROC curves, and regression diagnostics — evaluated on a held-out 20% test set.")
+
+    if not MODELS_READY or not (MODELS_DIR / "eval_data.json").exists():
+        st.info("Run `python streamlit_app/train_models.py` first, then restart.")
+        st.stop()
+
+    ev = load_eval()
+
+    tab_clf3, tab_clf5, tab_reg = st.tabs(["3-Class Classification", "5-Class Classification", "Regression"])
+
+    # ── helpers ──
+    BG = dict(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+
+    def confusion_heatmap(cm, classes, title):
+        fig = px.imshow(
+            cm, text_auto=True, aspect="auto",
+            x=classes, y=classes,
+            color_continuous_scale="Blues",
+            labels={"x": "Predicted", "y": "Actual", "color": "Count"},
+            title=title,
+        )
+        fig.update_layout(**BG, margin=dict(l=0, r=0, t=40, b=0),
+                          coloraxis_showscale=False)
+        return fig
+
+    def roc_figure(roc_data, title):
+        fig = go.Figure()
+        colors = ["#66c0f4", "#4ade80", "#facc15", "#fb923c", "#f87171"]
+        for i, (cls, d) in enumerate(roc_data.items()):
+            fig.add_trace(go.Scatter(
+                x=d["fpr"], y=d["tpr"], mode="lines",
+                name=f"{cls} (AUC={d['auc']:.2f})",
+                line=dict(color=colors[i % len(colors)], width=2),
+            ))
+        fig.add_shape(type="line", x0=0, y0=0, x1=1, y1=1,
+                      line=dict(dash="dash", color="#666"))
+        fig.update_layout(
+            title=title,
+            xaxis_title="False Positive Rate", yaxis_title="True Positive Rate",
+            legend=dict(x=0.6, y=0.05), **BG,
+        )
+        return fig
+
+    # ── 3-Class tab ──
+    with tab_clf3:
+        models3 = list(ev["clf3"].keys())
+        sel3 = st.selectbox("Model", models3, key="sel3")
+        d = ev["clf3"][sel3]
+
+        m1, m2 = st.columns(2)
+        m1.metric("Test Accuracy", f"{d['test_accuracy']*100:.1f}%")
+
+        col_cm, col_roc = st.columns(2)
+        with col_cm:
+            st.plotly_chart(
+                confusion_heatmap(d["confusion_matrix"], d["classes"],
+                                  f"Confusion Matrix — {sel3}"),
+                use_container_width=True,
+            )
+        with col_roc:
+            st.plotly_chart(
+                roc_figure(d["roc"], f"ROC Curves — {sel3}"),
+                use_container_width=True,
+            )
+
+    # ── 5-Class tab ──
+    with tab_clf5:
+        models5 = list(ev["clf5"].keys())
+        sel5 = st.selectbox("Model", models5, key="sel5")
+        d = ev["clf5"][sel5]
+
+        st.metric("Test Accuracy", f"{d['test_accuracy']*100:.1f}%")
+
+        col_cm, col_roc = st.columns(2)
+        with col_cm:
+            st.plotly_chart(
+                confusion_heatmap(d["confusion_matrix"], d["classes"],
+                                  f"Confusion Matrix — {sel5}"),
+                use_container_width=True,
+            )
+        with col_roc:
+            st.plotly_chart(
+                roc_figure(d["roc"], f"ROC Curves — {sel5}"),
+                use_container_width=True,
+            )
+
+    # ── Regression tab ──
+    with tab_reg:
+        models_r = list(ev["reg"].keys())
+        sel_r = st.selectbox("Model", models_r, key="sel_r")
+        d = ev["reg"][sel_r]
+
+        rm1, rm2 = st.columns(2)
+        rm1.metric("Test R²",   f"{d['r2']:.4f}")
+        rm2.metric("Test RMSE", f"{d['rmse']:.4f}")
+
+        col_sc, col_res = st.columns(2)
+
+        with col_sc:
+            sc = d["scatter"]
+            fig = px.scatter(
+                x=sc["actual"], y=sc["predicted"],
+                labels={"x": "Actual Wilson Score", "y": "Predicted Wilson Score"},
+                title=f"Actual vs Predicted — {sel_r}",
+                opacity=0.4, color_discrete_sequence=["#66c0f4"],
+            )
+            mn = min(min(sc["actual"]), min(sc["predicted"]))
+            mx = max(max(sc["actual"]), max(sc["predicted"]))
+            fig.add_shape(type="line", x0=mn, y0=mn, x1=mx, y1=mx,
+                          line=dict(dash="dash", color="#f87171", width=2))
+            fig.update_layout(**BG)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col_res:
+            res = d["residuals"]
+            fig = px.scatter(
+                x=res["predicted"], y=res["residuals"],
+                labels={"x": "Predicted Wilson Score", "y": "Residual (Actual − Predicted)"},
+                title=f"Residual Plot — {sel_r}",
+                opacity=0.4, color_discrete_sequence=["#66c0f4"],
+            )
+            fig.add_hline(y=0, line_dash="dash", line_color="#f87171", line_width=2)
+            fig.update_layout(**BG)
+            st.plotly_chart(fig, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
