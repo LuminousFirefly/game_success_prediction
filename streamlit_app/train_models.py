@@ -14,6 +14,7 @@ import pandas as pd
 from lightgbm import LGBMClassifier
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.naive_bayes import GaussianNB
 from sklearn.metrics import (
     auc, confusion_matrix, f1_score, make_scorer,
     r2_score, roc_curve, mean_squared_error,
@@ -42,9 +43,29 @@ selected_features = importance_df[
 for col in ["average_playtime", "median_playtime"]:
     if col in df.columns and col not in selected_features:
         selected_features.append(col)
-print(f"Selected {len(selected_features)} features")
+print(f"Selected {len(selected_features)} features before correlation drop")
 
-X = df[selected_features].copy()
+# Drop highly correlated features (threshold=0.90), same as notebook
+def _drop_correlated(df_feat, threshold=0.90):
+    corr = df_feat.corr().abs()
+    upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+    pairs = (upper.stack().reset_index()
+             .rename(columns={"level_0": "f1", "level_1": "f2", 0: "corr"})
+             .sort_values("corr", ascending=False))
+    to_drop = set()
+    for _, row in pairs.iterrows():
+        if row["corr"] < threshold:
+            break
+        if row["f1"] not in to_drop:
+            to_drop.add(row["f2"])
+    return to_drop
+
+to_drop = _drop_correlated(df[selected_features])
+eval_features = [c for c in selected_features if c not in to_drop]
+print(f"After correlation drop: {len(eval_features)} features (dropped {len(to_drop)})")
+
+X = df[selected_features].copy()   # deployment uses all selected features
+X_eval = df[eval_features].copy()  # eval models use correlation-pruned features
 
 # --- Targets ---
 le5 = LabelEncoder()
@@ -92,22 +113,24 @@ defaults = {col: float(X[col].median()) for col in selected_features}
 with open(MODELS_DIR / "feature_defaults.json", "w") as f:
     json.dump(defaults, f)
 
-# --- Evaluation: 80/20 split ---
+# --- Evaluation: 80/20 split (uses correlation-pruned features, same as notebook) ---
 print("\nPrecomputing evaluation metrics (80/20 split)...")
 X_tr, X_te, y5_tr, y5_te, y3_tr, y3_te, yr_tr, yr_te = train_test_split(
-    X, y_clf5, y_clf3, y_reg,
+    X_eval, y_clf5, y_clf3, y_reg,
     test_size=0.2, random_state=42, stratify=y_clf5,
 )
 
 clf5_defs = {
+    "Naive Bayes": make_pipeline(GaussianNB(), scale=True),
     "Logistic Regression": make_pipeline(
         LogisticRegression(max_iter=1000, class_weight="balanced", random_state=42), scale=True),
     "Random Forest": make_pipeline(
         RandomForestClassifier(n_estimators=200, class_weight="balanced", random_state=42, n_jobs=-1)),
     "XGBoost": make_pipeline(
-        XGBClassifier(n_estimators=300, learning_rate=0.05, max_depth=6,
-                      subsample=0.8, colsample_bytree=0.8, random_state=42,
-                      eval_metric="mlogloss", verbosity=0)),
+        XGBClassifier(n_estimators=500, learning_rate=0.05, max_depth=6,
+                      subsample=0.8, colsample_bytree=0.8, min_child_weight=3,
+                      random_state=42, eval_metric="mlogloss", verbosity=0)),
+    "KNN": make_pipeline(KNeighborsClassifier(n_neighbors=10, n_jobs=-1), scale=True),
 }
 clf3_defs = {
     "Logistic Regression": make_pipeline(
@@ -115,16 +138,17 @@ clf3_defs = {
     "Random Forest": make_pipeline(
         RandomForestClassifier(n_estimators=200, class_weight="balanced", random_state=42, n_jobs=-1)),
     "XGBoost": make_pipeline(
-        XGBClassifier(n_estimators=300, learning_rate=0.05, max_depth=6,
-                      subsample=0.8, colsample_bytree=0.8, random_state=42,
-                      eval_metric="mlogloss", verbosity=0)),
+        XGBClassifier(n_estimators=500, learning_rate=0.05, max_depth=6,
+                      subsample=0.8, colsample_bytree=0.8, min_child_weight=3,
+                      random_state=42, eval_metric="mlogloss", verbosity=0)),
+    "KNN": make_pipeline(KNeighborsClassifier(n_neighbors=10, n_jobs=-1), scale=True),
 }
 reg_defs = {
     "Linear Regression": make_pipeline(LinearRegression(), scale=True),
     "Random Forest": make_pipeline(
         RandomForestRegressor(n_estimators=200, random_state=42, n_jobs=-1)),
     "XGBoost": make_pipeline(
-        XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=6,
+        XGBRegressor(n_estimators=500, learning_rate=0.05, max_depth=6,
                      subsample=0.8, colsample_bytree=0.8, random_state=42, verbosity=0)),
 }
 
@@ -149,17 +173,17 @@ kf  = KFold(n_splits=5, shuffle=True, random_state=42)
 for name, pipe in clf5_defs.items():
     print(f"  clf5 — {name}")
     cv_res = cross_validate(pipe, X_tr, y5_tr, cv=skf,
-                            scoring=["accuracy", "f1_macro"],
+                            scoring=["accuracy", "f1_weighted"],
                             return_train_score=False)
     pipe.fit(X_tr, y5_tr)
     preds = pipe.predict(X_te)
     eval_data["clf5"][name] = {
         "test_accuracy": round(float((preds == y5_te).mean()), 4),
-        "test_f1":       round(float(f1_score(y5_te, preds, average="macro")), 4),
+        "test_f1":       round(float(f1_score(y5_te, preds, average="weighted")), 4),
         "cv_acc_mean":   round(float(cv_res["test_accuracy"].mean()), 4),
         "cv_acc_std":    round(float(cv_res["test_accuracy"].std()), 4),
-        "cv_f1_mean":    round(float(cv_res["test_f1_macro"].mean()), 4),
-        "cv_f1_std":     round(float(cv_res["test_f1_macro"].std()), 4),
+        "cv_f1_mean":    round(float(cv_res["test_f1_weighted"].mean()), 4),
+        "cv_f1_std":     round(float(cv_res["test_f1_weighted"].std()), 4),
         "classes":       le5.classes_.tolist(),
         "confusion_matrix": confusion_matrix(y5_te, preds).tolist(),
         "roc": compute_roc(pipe, X_te, y5_te, le5.classes_.tolist()),
@@ -168,17 +192,17 @@ for name, pipe in clf5_defs.items():
 for name, pipe in clf3_defs.items():
     print(f"  clf3 — {name}")
     cv_res = cross_validate(pipe, X_tr, y3_tr, cv=skf,
-                            scoring=["accuracy", "f1_macro"],
+                            scoring=["accuracy", "f1_weighted"],
                             return_train_score=False)
     pipe.fit(X_tr, y3_tr)
     preds = pipe.predict(X_te)
     eval_data["clf3"][name] = {
         "test_accuracy": round(float((preds == y3_te).mean()), 4),
-        "test_f1":       round(float(f1_score(y3_te, preds, average="macro")), 4),
+        "test_f1":       round(float(f1_score(y3_te, preds, average="weighted")), 4),
         "cv_acc_mean":   round(float(cv_res["test_accuracy"].mean()), 4),
         "cv_acc_std":    round(float(cv_res["test_accuracy"].std()), 4),
-        "cv_f1_mean":    round(float(cv_res["test_f1_macro"].mean()), 4),
-        "cv_f1_std":     round(float(cv_res["test_f1_macro"].std()), 4),
+        "cv_f1_mean":    round(float(cv_res["test_f1_weighted"].mean()), 4),
+        "cv_f1_std":     round(float(cv_res["test_f1_weighted"].std()), 4),
         "classes":       le3.classes_.tolist(),
         "confusion_matrix": confusion_matrix(y3_te, preds).tolist(),
         "roc": compute_roc(pipe, X_te, y3_te, le3.classes_.tolist()),

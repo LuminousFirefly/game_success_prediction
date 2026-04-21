@@ -215,9 +215,9 @@ elif page == "📈 Model Evaluation":
         return {
             "Model":           name,
             "CV Acc":          f"{d['cv_acc_mean']*100:.1f}% ± {d['cv_acc_std']*100:.1f}%",
-            "CV F1 (macro)":   f"{d['cv_f1_mean']:.3f} ± {d['cv_f1_std']:.3f}",
+            "CV F1 (weighted)":   f"{d['cv_f1_mean']:.3f} ± {d['cv_f1_std']:.3f}",
             "Test Acc":        f"{d['test_accuracy']*100:.1f}%",
-            "Test F1 (macro)": f"{d['test_f1']:.3f}",
+            "Test F1 (weighted)": f"{d['test_f1']:.3f}",
         }
 
     # ── 3-Class tab ────────────────────────────────────────────────────────────
