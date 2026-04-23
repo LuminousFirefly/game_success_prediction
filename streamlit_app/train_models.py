@@ -35,14 +35,23 @@ print("Loading data...")
 df = pd.read_csv(DATA_DIR / "steam_finalized_dataset.csv")
 importance_df = pd.read_csv(DATA_DIR / "feature_importances.csv")
 
+# Apply same filters as classification.ipynb
+df = df[df["owners_log"] >= 10]
+df = df[df["price"] > 0]
+print(f"Dataset shape after filtering: {df.shape}")
+
+# Factorize string columns so corr() includes them (mirrors notebook cell 5)
+for col in ["developer", "publisher"]:
+    if col in df.columns and df[col].dtype == object:
+        df[col] = pd.factorize(df[col])[0]
+
 # --- Feature selection (mirrors classification.ipynb exactly) ---
 threshold = 0.003
 selected_features = importance_df[
     importance_df["importance"] > threshold
 ]["feature"].tolist()
-for col in ["average_playtime", "median_playtime"]:
-    if col in df.columns and col not in selected_features:
-        selected_features.append(col)
+# Drop publisher (matches notebook)
+selected_features = [c for c in selected_features if c != "publisher"]
 print(f"Selected {len(selected_features)} features before correlation drop")
 
 # Drop highly correlated features (threshold=0.90), same as notebook
